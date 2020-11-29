@@ -6,6 +6,7 @@
 import vtk
 import numpy
 from vtk.util.vtkImageImportFromArray import *
+import scipy.io as scio
 
 
 def main():
@@ -14,9 +15,9 @@ def main():
 
 
     #fileName = get_program_parameters()
-    filename = "20201121_GF_2/20201121_GF_2/20201121"
-    colors.SetColor("SkinColor", [255, 125, 64, 255])
+    colors.SetColor("CTColor", [255, 125, 64, 255])
     colors.SetColor("BkgColor", [51, 77, 102, 255])
+    colors.SetColor("USColor", [255, 255, 0, 125])
 
     # Create the renderer, the render window, and the interactor. The renderer
     # draws into the render window, the interactor enables mouse- and
@@ -41,7 +42,7 @@ def main():
     volPath = "20201121_GF_2/20201121_GF_2/20201121.vol"
     volArray = numpy.fromfile(volPath,dtype=numpy.dtype('float32'))
     volArray = volArray.reshape((896,777,996))
-    print(volArray.shape)
+    #print(volArray.shape)
     importer = vtkImageImportFromArray()
     importer.SetArray(volArray)
     importer.Update() 
@@ -49,17 +50,21 @@ def main():
 
     # An isosurface, or contour value of 500 is known to correspond to the
     # skin of the patient.
-    skinExtractor = vtk.vtkMarchingCubes()
-    skinExtractor.SetInputConnection(importer.GetOutputPort())
-    skinExtractor.SetValue(0, 0.0775)
+    CTExtractor = vtk.vtkMarchingCubes()
+    CTExtractor.SetInputConnection(importer.GetOutputPort())
+    CTExtractor.SetValue(0, 0.0775)
+    '''CTExtractor.update()
 
-    skinMapper = vtk.vtkPolyDataMapper()
-    skinMapper.SetInputConnection(skinExtractor.GetOutputPort())
-    skinMapper.ScalarVisibilityOff()
+    filename = "CT.ply"'''
 
-    skin = vtk.vtkActor()
-    skin.SetMapper(skinMapper)
-    skin.GetProperty().SetDiffuseColor(colors.GetColor3d("SkinColor"))
+
+    CTMapper = vtk.vtkPolyDataMapper()
+    CTMapper.SetInputConnection(CTExtractor.GetOutputPort())
+    CTMapper.ScalarVisibilityOff()
+
+    CT = vtk.vtkActor()
+    CT.SetMapper(CTMapper)
+    CT.GetProperty().SetDiffuseColor(colors.GetColor3d("CTColor"))
 
     # An outline provides context around the data.
     #
@@ -72,6 +77,45 @@ def main():
     outline = vtk.vtkActor()
     outline.SetMapper(mapOutline)
     outline.GetProperty().SetColor(colors.GetColor3d("Black"))
+
+    volPath = "volume.mat"
+
+
+    '''f = h5py.File(volPath,'r')
+    data = f.get('data/variable1')
+    data = np.array(data)'''
+    USvolArray = scio.loadmat(volPath)
+    USvolArray = numpy.asarray(USvolArray['usData'], order='C')
+    USimporter = vtkImageImportFromArray()
+    USimporter.SetArray(USvolArray)
+    USimporter.Update() 
+
+
+    # An isosurface, or contour value of 500 is known to correspond to the
+    # skin of the patient.
+    USExtractor = vtk.vtkMarchingCubes()
+    USExtractor.SetInputConnection(USimporter.GetOutputPort())
+    USExtractor.SetValue(0, 20)
+
+    USMapper = vtk.vtkPolyDataMapper()
+    USMapper.SetInputConnection(USExtractor.GetOutputPort())
+    USMapper.ScalarVisibilityOff()
+
+    US = vtk.vtkActor()
+    US.SetMapper(USMapper)
+    US.GetProperty().SetDiffuseColor(colors.GetColor3d("USColor"))
+
+    # An outline provides context around the data.
+    #
+    USoutlineData = vtk.vtkOutlineFilter()
+    USoutlineData.SetInputConnection(USimporter.GetOutputPort())
+
+    USmapOutline = vtk.vtkPolyDataMapper()
+    USmapOutline.SetInputConnection(USoutlineData.GetOutputPort())
+
+    USoutline = vtk.vtkActor()
+    USoutline.SetMapper(USmapOutline)
+    USoutline.GetProperty().SetColor(colors.GetColor3d("Black"))
 
     # It is convenient to create an initial view of the data. The FocalPoint
     # and Position form a vector direction. Later on (ResetCamera() method)
@@ -89,7 +133,9 @@ def main():
     # The Dolly() method moves the camera towards the FocalPoint,
     # thereby enlarging the image.
     aRenderer.AddActor(outline)
-    aRenderer.AddActor(skin)
+    aRenderer.AddActor(CT)
+    aRenderer.AddActor(USoutline)
+    aRenderer.AddActor(US)
     aRenderer.SetActiveCamera(aCamera)
     aRenderer.ResetCamera()
     aCamera.Dolly(1.5)
