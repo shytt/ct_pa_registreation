@@ -53,9 +53,14 @@ def main():
     CTExtractor = vtk.vtkMarchingCubes()
     CTExtractor.SetInputConnection(importer.GetOutputPort())
     CTExtractor.SetValue(0, 0.0775)
-    '''CTExtractor.update()
+    
+    
 
-    filename = "CT.ply"'''
+    CTname = "CT.ply"
+    plyWriter = vtk.vtkPLYWriter()
+    plyWriter.SetFileName(CTname)
+    plyWriter.SetInputConnection(CTExtractor.GetOutputPort())
+    plyWriter.Write()
 
 
     CTMapper = vtk.vtkPolyDataMapper()
@@ -96,6 +101,12 @@ def main():
     USExtractor = vtk.vtkMarchingCubes()
     USExtractor.SetInputConnection(USimporter.GetOutputPort())
     USExtractor.SetValue(0, 20)
+
+    USname = "US.ply"
+    plyWriter = vtk.vtkPLYWriter()
+    plyWriter.SetFileName(USname)
+    plyWriter.SetInputConnection(USExtractor.GetOutputPort())
+    plyWriter.Write()
 
     USMapper = vtk.vtkPolyDataMapper()
     USMapper.SetInputConnection(USExtractor.GetOutputPort())
