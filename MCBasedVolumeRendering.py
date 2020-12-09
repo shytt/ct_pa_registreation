@@ -5,19 +5,35 @@
 
 import vtk
 import numpy
+import argparse
 from vtk.util.vtkImageImportFromArray import *
 import scipy.io as scio
+from skimage.transform import rescale, resize, downscale_local_mean
+import h5py
 
+def get_program_parameters():
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--CT", action="store_true", help="generate CT surface")
+    parser.add_argument("--US", action="store_true", help="generate US surface")
+    parser.add_argument("-f", "--filename", help="the volume data location. For CT, .vol data is used and for US, .mat data is used.")
+    parser.add_argument("-v", "--isovalue", type=float, default = 0, help="the iso value for the surface")
+    parser.add_argument("-s", "--savename", help="save the corresponding file as pointcloud file .ply")
+    parser.add_argument("-c", "--colorsurf",type = int, nargs=4, default = [255, 125, 64, 255], help="the color of surface")
+    parser.add_argument("-b", "--colorbkg",type = int, nargs=4, default = [51, 77, 102, 255], help="the color of background")
+    parser.add_argument("-r", "--resize",type = float, default = 1, help="resize the surface by a multiplyer")
+    parser.add_argument("--np", action="store_true", help="do not plot the surface in vtk")
+    # iso-surface related, signal source related, resolution, step size
+    args = parser.parse_args()
+    return args
 
 def main():
+    args = get_program_parameters()
+
+    # create the color table
     colors = vtk.vtkNamedColors()
-
-
-
-    #fileName = get_program_parameters()
-    colors.SetColor("CTColor", [255, 125, 64, 255])
-    colors.SetColor("BkgColor", [51, 77, 102, 255])
-    colors.SetColor("USColor", [255, 255, 0, 125])
+    colors.SetColor("surfColor", args.colorsurf)
+    colors.SetColor("BkgColor", args.colorbkg)
 
     # Create the renderer, the render window, and the interactor. The renderer
     # draws into the render window, the interactor enables mouse- and
@@ -30,46 +46,49 @@ def main():
     iren = vtk.vtkRenderWindowInteractor()
     iren.SetRenderWindow(renWin)
 
-    '''
-    reader = vtk.vtkTIFFReader()
-    reader.SetFilePrefix(filename)
-    reader.SetFilePattern("%s%05d.tif")
-    reader.SetDataExtent(0,999,0,999,1,1001)
-    reader.SetDataSpacing(1,1,0.001)
-    reader.Update()
-    '''
+    if not args.filename:
+        print("Must input a volume data to read!")
+        return 
 
-    volPath = "20201121_GF_2/20201121_GF_2/20201121.vol"
-    volArray = numpy.fromfile(volPath,dtype=numpy.dtype('float32'))
-    volArray = volArray.reshape((896,777,996))
-    #print(volArray.shape)
+    if args.CT:
+        volArray = numpy.fromfile(args.filename,dtype=numpy.dtype('float32'))
+        volArray = volArray.reshape((974,999,798))
+        volArray = rescale(volArray, args.resize, anti_aliasing=True)
+    elif args.US:
+        volArray = h5py.File(args.filename,'r')
+        volArray = numpy.asarray(volArray['usMasked'], order='C')
+    else:
+        print("Must choose CT or US!") 
+        return   
+
     importer = vtkImageImportFromArray()
     importer.SetArray(volArray)
     importer.Update() 
-
+    print("Finish loading data.")
 
     # An isosurface, or contour value of 500 is known to correspond to the
     # skin of the patient.
-    CTExtractor = vtk.vtkMarchingCubes()
-    CTExtractor.SetInputConnection(importer.GetOutputPort())
-    CTExtractor.SetValue(0, 0.0775)
+    Extractor = vtk.vtkMarchingCubes()
+    Extractor.SetInputConnection(importer.GetOutputPort())
+    Extractor.SetValue(0, args.isovalue)
     
-    
+    if args.savename:
+        plyWriter = vtk.vtkPLYWriter()
+        plyWriter.SetFileName(args.savename)
+        plyWriter.SetInputConnection(Extractor.GetOutputPort())
+        plyWriter.Write()
+        
+    if args.np:
+        return
 
-    CTname = "CT.ply"
-    plyWriter = vtk.vtkPLYWriter()
-    plyWriter.SetFileName(CTname)
-    plyWriter.SetInputConnection(CTExtractor.GetOutputPort())
-    plyWriter.Write()
+    print("Start rendering.")
+    Mapper = vtk.vtkPolyDataMapper()
+    Mapper.SetInputConnection(Extractor.GetOutputPort())
+    Mapper.ScalarVisibilityOff()
 
-
-    CTMapper = vtk.vtkPolyDataMapper()
-    CTMapper.SetInputConnection(CTExtractor.GetOutputPort())
-    CTMapper.ScalarVisibilityOff()
-
-    CT = vtk.vtkActor()
-    CT.SetMapper(CTMapper)
-    CT.GetProperty().SetDiffuseColor(colors.GetColor3d("CTColor"))
+    surf = vtk.vtkActor()
+    surf.SetMapper(Mapper)
+    surf.GetProperty().SetDiffuseColor(colors.GetColor3d("surfColor"))
 
     # An outline provides context around the data.
     #
@@ -83,50 +102,6 @@ def main():
     outline.SetMapper(mapOutline)
     outline.GetProperty().SetColor(colors.GetColor3d("Black"))
 
-    volPath = "volume.mat"
-
-
-    '''f = h5py.File(volPath,'r')
-    data = f.get('data/variable1')
-    data = np.array(data)'''
-    USvolArray = scio.loadmat(volPath)
-    USvolArray = numpy.asarray(USvolArray['usData'], order='C')
-    USimporter = vtkImageImportFromArray()
-    USimporter.SetArray(USvolArray)
-    USimporter.Update() 
-
-
-    # An isosurface, or contour value of 500 is known to correspond to the
-    # skin of the patient.
-    USExtractor = vtk.vtkMarchingCubes()
-    USExtractor.SetInputConnection(USimporter.GetOutputPort())
-    USExtractor.SetValue(0, 20)
-
-    USname = "US.ply"
-    plyWriter = vtk.vtkPLYWriter()
-    plyWriter.SetFileName(USname)
-    plyWriter.SetInputConnection(USExtractor.GetOutputPort())
-    plyWriter.Write()
-
-    USMapper = vtk.vtkPolyDataMapper()
-    USMapper.SetInputConnection(USExtractor.GetOutputPort())
-    USMapper.ScalarVisibilityOff()
-
-    US = vtk.vtkActor()
-    US.SetMapper(USMapper)
-    US.GetProperty().SetDiffuseColor(colors.GetColor3d("USColor"))
-
-    # An outline provides context around the data.
-    #
-    USoutlineData = vtk.vtkOutlineFilter()
-    USoutlineData.SetInputConnection(USimporter.GetOutputPort())
-
-    USmapOutline = vtk.vtkPolyDataMapper()
-    USmapOutline.SetInputConnection(USoutlineData.GetOutputPort())
-
-    USoutline = vtk.vtkActor()
-    USoutline.SetMapper(USmapOutline)
-    USoutline.GetProperty().SetColor(colors.GetColor3d("Black"))
 
     # It is convenient to create an initial view of the data. The FocalPoint
     # and Position form a vector direction. Later on (ResetCamera() method)
@@ -144,9 +119,7 @@ def main():
     # The Dolly() method moves the camera towards the FocalPoint,
     # thereby enlarging the image.
     aRenderer.AddActor(outline)
-    aRenderer.AddActor(CT)
-    aRenderer.AddActor(USoutline)
-    aRenderer.AddActor(US)
+    aRenderer.AddActor(surf)
     aRenderer.SetActiveCamera(aCamera)
     aRenderer.ResetCamera()
     aCamera.Dolly(1.5)
@@ -169,19 +142,7 @@ def main():
     iren.Start()
 
 
-def get_program_parameters():
-    import argparse
-    description = 'The skin extracted from a CT dataset of the head.'
-    epilogue = '''
-    Derived from VTK/Examples/Cxx/Medical1.cxx
-    This example reads a volume dataset, extracts an isosurface that
-     represents the skin and displays it.
-    '''
-    parser = argparse.ArgumentParser(description=description, epilog=epilogue,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('filename', help='FullHead.mhd.')
-    args = parser.parse_args()
-    return args.filename
+
 
 
 if __name__ == '__main__':
