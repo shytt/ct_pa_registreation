@@ -23,6 +23,7 @@ def get_program_parameters():
     parser.add_argument("-b", "--colorbkg",type = int, nargs=4, default = [51, 77, 102, 255], help="the color of background")
     parser.add_argument("-r", "--resize",type = float, default = 1, help="resize the surface by a multiplyer")
     parser.add_argument("--np", action="store_true", help="do not plot the surface in vtk")
+    parser.add_argument("--D", type = int, nargs=3, help="the dimension of CT volume data")
     # iso-surface related, signal source related, resolution, step size
     args = parser.parse_args()
     return args
@@ -52,11 +53,12 @@ def main():
 
     if args.CT:
         volArray = numpy.fromfile(args.filename,dtype=numpy.dtype('float32'))
-        volArray = volArray.reshape((974,999,798))
+        volArray = volArray.reshape((args.D[2],args.D[1],args.D[0]))
         volArray = rescale(volArray, args.resize, anti_aliasing=True)
     elif args.US:
-        volArray = h5py.File(args.filename,'r')
-        volArray = numpy.asarray(volArray['usMasked'], order='C')
+        volArray = scio.loadmat(args.filename)
+        #volArray = h5py.File(args.filename,'r')
+        volArray = numpy.asarray(volArray['usData'], order='C')
     else:
         print("Must choose CT or US!") 
         return   
@@ -70,7 +72,8 @@ def main():
     # skin of the patient.
     Extractor = vtk.vtkMarchingCubes()
     Extractor.SetInputConnection(importer.GetOutputPort())
-    Extractor.SetValue(0, args.isovalue)
+    #Extractor.SetValue(0, args.isovalue)
+    Extractor.SetValue(0,numpy.max(volArray)*0.2)
     
     if args.savename:
         plyWriter = vtk.vtkPLYWriter()
