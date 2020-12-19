@@ -73,7 +73,10 @@ def main():
     Extractor = vtk.vtkMarchingCubes()
     Extractor.SetInputConnection(importer.GetOutputPort())
     #Extractor.SetValue(0, args.isovalue)
-    Extractor.SetValue(0,numpy.max(volArray)*0.2)
+    if args.isovalue:
+    	Extractor.SetValue(0, args.isovalue)
+    else:
+    	Extractor.SetValue(0,numpy.max(volArray)*0.2)
     
     if args.savename:
         plyWriter = vtk.vtkPLYWriter()
